@@ -215,20 +215,17 @@
 
     <script type="module">
         // ============================================
-        // КОНФИГУРАЦИЯ FIREBASE - ЗАМЕНИТЕ НА ВАШУ!
+        // КОНФИГУРАЦИЯ FIREBASE - ВАШИ ДАННЫЕ
         // ============================================
         const firebaseConfig = {
-            apiKey: "AIzaSyB4KjR9P8qL2nM7xW5vZ8yQ3aC1dE6fG9hJ",
-            authDomain: "your-project.firebaseapp.com",
-            databaseURL: "https://your-project-default-rtdb.firebaseio.com",
-            projectId: "your-project",
-            storageBucket: "your-project.appspot.com",
-            messagingSenderId: "123456789012",
-            appId: "1:123456789012:web:abcdef1234567890"
+            apiKey: "AIzaSyACxxdZ4YuxQeHzKFerNEWYyiERt4hM6jc",
+            authDomain: "project-8146930540921453224.firebaseapp.com",
+            databaseURL: "https://project-8146930540921453224-default-rtdb.firebaseio.com",
+            projectId: "project-8146930540921453224",
+            storageBucket: "project-8146930540921453224.firebasestorage.app",
+            messagingSenderId: "1064559998349",
+            appId: "1:1064559998349:web:9d16552a7ee18661f2b9c4"
         };
-        
-        // ⚠️ ВНИМАНИЕ! Замените значения выше на свои из Firebase Console!
-        // Если не замените, чат НЕ будет работать!
         
         import { initializeApp } from 'firebase/app';
         import { getDatabase, ref, set, onValue, push, remove, onDisconnect, serverTimestamp } from 'firebase/database';
@@ -243,6 +240,7 @@
             const app = initializeApp(firebaseConfig);
             db = getDatabase(app);
             console.log('✅ Firebase инициализирован');
+            document.getElementById('status').textContent = '🟢 Firebase подключен! Запрос доступа к камере...';
         } catch (error) {
             console.error('❌ Ошибка инициализации Firebase:', error);
             document.getElementById('status').textContent = '❌ Ошибка: Firebase не настроен. Проверьте конфигурацию!';
@@ -277,7 +275,6 @@
         let localStream = null;
         let roomId = null;
         let myClientId = null;
-        let isInitiator = false;
         
         // DOM элементы
         const localVideo = document.getElementById('localVideo');
@@ -310,7 +307,7 @@
             document.getElementById('roomUrl').textContent = url;
         }
         
-        function copyRoomUrl() {
+        window.copyRoomUrl = function() {
             const url = document.getElementById('roomUrl').textContent;
             navigator.clipboard.writeText(url);
             const btn = event.target;
@@ -319,7 +316,7 @@
             setTimeout(() => {
                 btn.textContent = originalText;
             }, 2000);
-        }
+        };
         
         // ============================================
         // WebRTC функции
