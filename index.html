@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Семейный видеочат</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 24px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+            backdrop-filter: blur(10px);
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            font-size: 14px;
+            opacity: 0.9;
+        }
+
+        .room-info {
+            background: #f0f0f0;
+            padding: 12px;
+            text-align: center;
+            border-bottom: 1px solid #ddd;
+            font-size: 14px;
+        }
+
+        .room-info code {
+            background: #fff;
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-family: monospace;
+            font-size: 12px;
+            margin: 0 4px;
+            border: 1px solid #ccc;
+        }
+
+        .videos-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            padding: 20px;
+            background: #1a1a2e;
+        }
+
+        .video-wrapper {
+            flex: 1;
+            min-width: 300px;
+            position: relative;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            aspect-ratio: 16 / 9;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .video-wrapper video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            background: #000;
+        }
+
+        .video-label {
+            position: absolute;
+            bottom: 12px;
+            left: 12px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 500;
+            backdrop-filter: blur(5px);
+        }
+
+        .controls {
+            padding: 20px;
+            background: white;
+            display: flex;
+            gap: 12px;
+            justify-content: center;
+            flex-wrap: wrap;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+            color: white;
+        }
+
+        .btn-warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        .status {
+            padding: 12px 20px;
+            text-align: center;
+            font-size: 14px;
+            background: #f8f9fa;
+            border-top: 1px solid #e0e0e0;
+            color: #666;
+        }
+
+        .status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .copy-btn {
+            background: #28a745;
+            color: white;
+            padding: 6px 12px;
+            font-size: 12px;
+            margin-left: 8px;
+        }
+
+        @media (max-width: 768px) {
+            .videos-container {
+                flex-direction: column;
+            }
+            
+            button {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👨‍👩‍👧 Семейный видеочат</h1>
+            <p>Просто зайдите по одной ссылке и начните общаться</p>
+        </div>
+        
+        <div class="room-info" id="roomInfo">
+            🔗 Ваша ссылка для общения:
+            <code id="roomUrl">Загрузка...</code>
+            <button class="copy-btn" onclick="copyRoomUrl()">📋 Копировать</button>
+        </div>
+        
+        <div class="videos-container">
+            <div class="video-wrapper">
+                <video id="localVideo" autoplay muted playsinline></video>
+                <div class="video-label">📹 Вы</div>
+            </div>
+            <div class="video-wrapper">
+                <video id="remoteVideo" autoplay playsinline></video>
+                <div class="video-label">👤 Собеседник</div>
+            </div>
+        </div>
+        
+        <div class="controls">
+            <button id="toggleAudio" class="btn-primary">🔊 Выключить звук</button>
+            <button id="toggleVideo" class="btn-primary">📷 Выключить видео</button>
+            <button id="hangupBtn" class="btn-danger">📞 Завершить звонок</button>
+        </div>
+        
+        <div class="status" id="status">
+            🟡 Подключение к камере...
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // КОНФИГУРАЦИЯ - не требует изменений
+        // ============================================
+        
+        // Публичные STUN/TURN серверы для обхода NAT
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443?transport=tcp',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            ]
+        };
+        
+        // Глобальные переменные
+        let peerConnection = null;
+        let localStream = null;
+        let remoteStream = null;
+        let roomId = null;
+        let isInitiator = false;
+        
+        // DOM элементы
+        const localVideo = document.getElementById('localVideo');
+        const remoteVideo = document.getElementById('remoteVideo');
+        const statusDiv = document.getElementById('status');
+        const toggleAudioBtn = document.getElementById('toggleAudio');
+        const toggleVideoBtn = document.getElementById('toggleVideo');
+        const hangupBtn = document.getElementById('hangupBtn');
+        
+        let audioEnabled = true;
+        let videoEnabled = true;
+        
+        // ============================================
+        // 1. Управление комнатой (через URL hash)
+        // ============================================
+        
+        function getRoomId() {
+            // Получаем или создаем ID комнаты
+            let hash = window.location.hash.substring(1);
+            if (!hash) {
+                // Генерируем простой 6-символьный ID
+                hash = Math.random().toString(36).substring(2, 8);
+                window.location.hash = hash;
+            }
+            return hash;
+        }
+        
+        function updateRoomUrl() {
+            const url = window.location.href.split('#')[0] + '#' + roomId;
+            document.getElementById('roomUrl').textContent = url;
+        }
+        
+        function copyRoomUrl() {
+            const url = document.getElementById('roomUrl').textContent;
+            navigator.clipboard.writeText(url).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Скопировано!';
+                setTimeout(() => {
+                    btn.textContent = originalText;
+                }, 2000);
+            }).catch(err => {
+                alert('Не удалось скопировать. Скопируйте вручную: ' + url);
+            });
+        }
+        
+        // ============================================
+        // 2. WebRTC сигналинг через BroadcastChannel (кросс-табличный)
+        // ============================================
+        
+        // Используем BroadcastChannel для связи между вкладками/окнами
+        // Это позволяет обойтись без внешнего сервера!
+        let channel = null;
+        
+        function initSignaling() {
+            // Создаем канал с именем комнаты
+            channel = new BroadcastChannel(`videochat_${roomId}`);
+            
+            channel.onmessage = async (event) => {
+                const data = event.data;
+                console.log('Получено сообщение:', data.type);
+                
+                switch (data.type) {
+                    case 'offer':
+                        await handleOffer(data.offer);
+                        break;
+                    case 'answer':
+                        await handleAnswer(data.answer);
+                        break;
+                    case 'ice-candidate':
+                        await handleIceCandidate(data.candidate);
+                        break;
+                    case 'user-left':
+                        handleUserLeft();
+                        break;
+                }
+            };
+            
+            // Отмечаем, что мы здесь
+            updateStatus('🟢 Ожидание собеседника...');
+            
+            // Проверяем, есть ли уже кто-то в комнате
+            // Для этого используем простую задержку и пробуем создать offer
+            setTimeout(() => {
+                if (peerConnection === null && localStream) {
+                    // Если через 2 секунды нет соединения, становимся инициатором
+                    createOffer();
+                }
+            }, 2000);
+        }
+        
+        // ============================================
+        // 3. WebRTC соединение
+        // ============================================
+        
+        async function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(configuration);
+            
+            // Добавляем локальные треки
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
+            }
+            
+            // Обработка входящих треков (видео собеседника)
+            peerConnection.ontrack = (event) => {
+                console.log('Получен трек от собеседника');
+                remoteStream = event.streams[0];
+                remoteVideo.srcObject = remoteStream;
+                updateStatus('🟢 В соединении! Вы разговариваете');
+                statusDiv.classList.add('connected');
+            };
+            
+            // Обработка ICE кандидатов
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    sendMessage({
+                        type: 'ice-candidate',
+                        candidate: event.candidate
+                    });
+                }
+            };
+            
+            // Отслеживание состояния соединения
+            peerConnection.onconnectionstatechange = () => {
+                console.log('Connection state:', peerConnection.connectionState);
+                if (peerConnection.connectionState === 'connected') {
+                    updateStatus('🟢 Соединение установлено!');
+                } else if (peerConnection.connectionState === 'disconnected') {
+                    updateStatus('🟡 Соединение потеряно...');
+                } else if (peerConnection.connectionState === 'failed') {
+                    updateStatus('🔴 Не удалось установить соединение. Попробуйте обновить страницу.');
+                }
+            };
+        }
+        
+        async function createOffer() {
+            if (!peerConnection) {
+                await createPeerConnection();
+            }
+            
+            if (peerConnection.signalingState !== 'stable') {
+                console.log('Signaling state not stable, waiting...');
+                return;
+            }
+            
+            try {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                sendMessage({
+                    type: 'offer',
+                    offer: peerConnection.localDescription
+                });
+                
+                updateStatus('🟣 Приглашение отправлено...');
+            } catch (error) {
+                console.error('Error creating offer:', error);
+            }
+        }
+        
+        async function handleOffer(offer) {
+            if (!peerConnection) {
+                await createPeerConnection();
+            }
+            
+            try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                sendMessage({
+                    type: 'answer',
+                    answer: peerConnection.localDescription
+                });
+                
+                updateStatus('🟢 Соединение устанавливается...');
+            } catch (error) {
+                console.error('Error handling offer:', error);
+            }
+        }
+        
+        async function handleAnswer(answer) {
+            if (!peerConnection) return;
+            
+            try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+                updateStatus('🟢 Соединение установлено!');
+            } catch (error) {
+                console.error('Error handling answer:', error);
+            }
+        }
+        
+        async function handleIceCandidate(candidate) {
+            if (!peerConnection) return;
+            
+            try {
+                await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+            } catch (error) {
+                console.error('Error adding ICE candidate:', error);
+            }
+        }
+        
+        function handleUserLeft() {
+            if (remoteVideo.srcObject) {
+                remoteVideo.srcObject = null;
+                updateStatus('🟡 Собеседник вышел. Ожидание нового подключения...');
+                statusDiv.classList.remove('connected');
+                
+                // Закрываем текущее соединение
+                if (peerConnection) {
+                    peerConnection.close();
+                    peerConnection = null;
+                }
+                
+                // Пробуем создать новое предложение через секунду
+                setTimeout(() => {
+                    if (localStream && !peerConnection) {
+                        createOffer();
+                    }
+                }, 1000);
+            }
+        }
+        
+        // ============================================
+        // 4. Отправка сообщений через BroadcastChannel
+        // ============================================
+        
+        function sendMessage(message) {
+            if (channel) {
+                channel.postMessage(message);
+            }
+        }
+        
+        function notifyUserLeft() {
+            sendMessage({ type: 'user-left' });
+            handleUserLeft();
+        }
+        
+        // ============================================
+        // 5. Управление медиа
+        // ============================================
+        
+        async function initMedia() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: true,
+                    audio: true
+                });
+                
+                localStream = stream;
+                localVideo.srcObject = stream;
+                
+                updateStatus('🟢 Камера готова! Ожидание собеседника...');
+                
+                // Инициализируем сигналинг после получения медиа
+                initSignaling();
+                
+                // Настройка кнопок
+                setupControls();
+                
+            } catch (error) {
+                console.error('Ошибка доступа к камере/микрофону:', error);
+                
+                if (error.name === 'NotAllowedError') {
+                    updateStatus('❌ Нет доступа к камере и микрофону. Разрешите доступ в браузере.');
+                } else if (error.name === 'NotFoundError') {
+                    updateStatus('❌ Не найдена камера или микрофон. Подключите устройства.');
+                } else {
+                    updateStatus('❌ Ошибка: ' + error.message);
+                }
+            }
+        }
+        
+        function setupControls() {
+            toggleAudioBtn.onclick = () => {
+                if (localStream) {
+                    audioEnabled = !audioEnabled;
+                    localStream.getAudioTracks().forEach(track => {
+                        track.enabled = audioEnabled;
+                    });
+                    toggleAudioBtn.textContent = audioEnabled ? '🔊 Выключить звук' : '🔇 Включить звук';
+                    toggleAudioBtn.style.background = audioEnabled ? '' : '#ffc107';
+                }
+            };
+            
+            toggleVideoBtn.onclick = () => {
+                if (localStream) {
+                    videoEnabled = !videoEnabled;
+                    localStream.getVideoTracks().forEach(track => {
+                        track.enabled = videoEnabled;
+                    });
+                    toggleVideoBtn.textContent = videoEnabled ? '📷 Выключить видео' : '🎥 Включить видео';
+                    toggleVideoBtn.style.background = videoEnabled ? '' : '#ffc107';
+                }
+            };
+            
+            hangupBtn.onclick = () => {
+                notifyUserLeft();
+                if (peerConnection) {
+                    peerConnection.close();
+                    peerConnection = null;
+                }
+                updateStatus('🟡 Звонок завершен. Обновите страницу для нового звонка.');
+            };
+        }
+        
+        function updateStatus(message) {
+            statusDiv.textContent = message;
+            statusDiv.className = 'status';
+            if (message.includes('соединение установлено') || message.includes('разговариваете')) {
+                statusDiv.classList.add('connected');
+            }
+        }
+        
+        // ============================================
+        // 6. Инициализация
+        // ============================================
+        
+        roomId = getRoomId();
+        updateRoomUrl();
+        
+        // Запускаем получение медиа
+        initMedia();
+        
+        // Обработка закрытия страницы
+        window.addEventListener('beforeunload', () => {
+            if (peerConnection) {
+                peerConnection.close();
+            }
+            if (channel) {
+                notifyUserLeft();
+            }
+        });
+        
+        // Предотвращаем закрытие случайно
+        window.addEventListener('load', () => {
+            console.log('Видеочат готов!');
+        });
+    </script>
+</body>
+</html>
