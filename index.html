@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Видеочат - Простой</title>
+    <title>Семейный видеочат</title>
     <style>
         * {
             margin: 0;
@@ -22,7 +22,7 @@
         }
 
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             width: 100%;
             background: rgba(255, 255, 255, 0.95);
             border-radius: 24px;
@@ -35,6 +35,11 @@
             color: white;
             padding: 20px;
             text-align: center;
+        }
+
+        .header h1 {
+            font-size: 24px;
+            margin-bottom: 8px;
         }
 
         .room-info {
@@ -53,6 +58,7 @@
             display: inline-block;
             margin: 10px 0;
             word-break: break-all;
+            border: 1px solid #ccc;
         }
 
         .videos-container {
@@ -138,6 +144,11 @@
             color: #155724;
         }
 
+        .status.error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
         .copy-btn {
             background: #28a745;
             color: white;
@@ -154,13 +165,12 @@
             }
         }
     </style>
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
 </head>
 <body>
     <div class="container">
         <div class="header">
             <h1>👨‍👩‍👧 Семейный видеочат</h1>
-            <p>Простой видеочат для двоих</p>
+            <p>Просто зайдите по одной ссылке и начните общаться</p>
         </div>
         
         <div class="room-info">
@@ -194,32 +204,111 @@
         </div>
     </div>
 
-    <script>
+    <script type="importmap">
+        {
+            "imports": {
+                "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+                "firebase/database": "https://www.gstatic.com/firebasejs/10.8.0/firebase-database.js"
+            }
+        }
+    </script>
+
+    <script type="module">
         // ============================================
-        // Простой видеочат с использованием PeerJS
-        // НЕ ТРЕБУЕТ FIREBASE!
+        // КОНФИГУРАЦИЯ FIREBASE - ЗАМЕНИТЕ НА ВАШУ!
         // ============================================
+        const firebaseConfig = {
+            apiKey: "AIzaSyB4KjR9P8qL2nM7xW5vZ8yQ3aC1dE6fG9hJ",
+            authDomain: "your-project.firebaseapp.com",
+            databaseURL: "https://your-project-default-rtdb.firebaseio.com",
+            projectId: "your-project",
+            storageBucket: "your-project.appspot.com",
+            messagingSenderId: "123456789012",
+            appId: "1:123456789012:web:abcdef1234567890"
+        };
         
+        // ⚠️ ВНИМАНИЕ! Замените значения выше на свои из Firebase Console!
+        // Если не замените, чат НЕ будет работать!
+        
+        import { initializeApp } from 'firebase/app';
+        import { getDatabase, ref, set, onValue, push, remove, onDisconnect, serverTimestamp } from 'firebase/database';
+        
+        // Инициализация Firebase
+        let db;
+        let roomRef;
+        let messagesRef;
+        let clientsRef;
+        
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getDatabase(app);
+            console.log('✅ Firebase инициализирован');
+        } catch (error) {
+            console.error('❌ Ошибка инициализации Firebase:', error);
+            document.getElementById('status').textContent = '❌ Ошибка: Firebase не настроен. Проверьте конфигурацию!';
+            document.getElementById('status').classList.add('error');
+        }
+        
+        // ============================================
+        // WebRTC конфигурация
+        // ============================================
+        const configuration = {
+            iceServers: [
+                { urls: 'stun:stun.l.google.com:19302' },
+                { urls: 'stun:stun1.l.google.com:19302' },
+                { urls: 'stun:stun2.l.google.com:19302' },
+                { urls: 'stun:stun3.l.google.com:19302' },
+                { urls: 'stun:stun4.l.google.com:19302' },
+                {
+                    urls: 'turn:openrelay.metered.ca:80',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                },
+                {
+                    urls: 'turn:openrelay.metered.ca:443',
+                    username: 'openrelayproject',
+                    credential: 'openrelayproject'
+                }
+            ]
+        };
+        
+        // Глобальные переменные
+        let peerConnection = null;
         let localStream = null;
-        let remoteStream = null;
-        let peer = null;
-        let currentCall = null;
-        let myId = null;
+        let roomId = null;
+        let myClientId = null;
+        let isInitiator = false;
         
+        // DOM элементы
         const localVideo = document.getElementById('localVideo');
         const remoteVideo = document.getElementById('remoteVideo');
         const statusDiv = document.getElementById('status');
         
-        // Получаем ID комнаты из URL
-        let roomId = window.location.hash.substring(1);
-        if (!roomId) {
-            roomId = Math.random().toString(36).substring(2, 8);
-            window.location.hash = roomId;
+        function updateStatus(message, type = 'info') {
+            statusDiv.textContent = message;
+            statusDiv.className = 'status';
+            if (type === 'success') {
+                statusDiv.classList.add('connected');
+            } else if (type === 'error') {
+                statusDiv.classList.add('error');
+            }
+            console.log(`[${type}] ${message}`);
         }
         
-        // Обновляем URL в интерфейсе
-        const fullUrl = window.location.href.split('#')[0] + '#' + roomId;
-        document.getElementById('roomUrl').textContent = fullUrl;
+        // Получаем ID комнаты из URL
+        function getRoomId() {
+            let hash = window.location.hash.substring(1);
+            if (!hash) {
+                hash = Math.random().toString(36).substring(2, 8);
+                window.location.hash = hash;
+            }
+            return hash;
+        }
+        
+        function updateRoomUrl() {
+            const url = window.location.href.split('#')[0] + '#' + roomId;
+            document.getElementById('roomUrl').textContent = url;
+        }
         
         function copyRoomUrl() {
             const url = document.getElementById('roomUrl').textContent;
@@ -232,16 +321,209 @@
             }, 2000);
         }
         
-        function updateStatus(message, isConnected = false) {
-            statusDiv.textContent = message;
-            statusDiv.className = 'status';
-            if (isConnected) {
-                statusDiv.classList.add('connected');
+        // ============================================
+        // WebRTC функции
+        // ============================================
+        async function createPeerConnection() {
+            peerConnection = new RTCPeerConnection(configuration);
+            
+            if (localStream) {
+                localStream.getTracks().forEach(track => {
+                    peerConnection.addTrack(track, localStream);
+                });
             }
-            console.log(message);
+            
+            peerConnection.ontrack = (event) => {
+                console.log('📹 Получен поток от собеседника');
+                remoteVideo.srcObject = event.streams[0];
+                updateStatus('🟢 В соединении! Вы разговариваете', 'success');
+            };
+            
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    sendSignal('ice-candidate', {
+                        candidate: event.candidate
+                    });
+                }
+            };
+            
+            peerConnection.oniceconnectionstatechange = () => {
+                console.log('ICE состояние:', peerConnection.iceConnectionState);
+                if (peerConnection.iceConnectionState === 'failed') {
+                    updateStatus('🔴 Не удалось установить соединение', 'error');
+                }
+            };
+            
+            peerConnection.onconnectionstatechange = () => {
+                console.log('Состояние соединения:', peerConnection.connectionState);
+                if (peerConnection.connectionState === 'connected') {
+                    updateStatus('🟢 Соединение установлено!', 'success');
+                } else if (peerConnection.connectionState === 'disconnected') {
+                    updateStatus('🟡 Соединение потеряно...', 'error');
+                }
+            };
         }
         
-        // Получаем доступ к камере и микрофону
+        async function createOffer() {
+            if (!peerConnection) {
+                await createPeerConnection();
+            }
+            
+            if (peerConnection.signalingState !== 'stable') {
+                console.log('Состояние не stable, ждем...');
+                return;
+            }
+            
+            try {
+                const offer = await peerConnection.createOffer();
+                await peerConnection.setLocalDescription(offer);
+                
+                sendSignal('offer', {
+                    sdp: peerConnection.localDescription.sdp,
+                    type: peerConnection.localDescription.type
+                });
+                
+                updateStatus('🟣 Приглашение отправлено...');
+            } catch (error) {
+                console.error('Ошибка создания offer:', error);
+            }
+        }
+        
+        async function handleOffer(offerData) {
+            if (!peerConnection) {
+                await createPeerConnection();
+            }
+            
+            try {
+                const offer = new RTCSessionDescription(offerData);
+                await peerConnection.setRemoteDescription(offer);
+                
+                const answer = await peerConnection.createAnswer();
+                await peerConnection.setLocalDescription(answer);
+                
+                sendSignal('answer', {
+                    sdp: peerConnection.localDescription.sdp,
+                    type: peerConnection.localDescription.type
+                });
+                
+                updateStatus('🟢 Соединение устанавливается...');
+            } catch (error) {
+                console.error('Ошибка обработки offer:', error);
+            }
+        }
+        
+        async function handleAnswer(answerData) {
+            if (!peerConnection) return;
+            
+            try {
+                const answer = new RTCSessionDescription(answerData);
+                await peerConnection.setRemoteDescription(answer);
+                updateStatus('🟢 Соединение установлено!', 'success');
+            } catch (error) {
+                console.error('Ошибка обработки answer:', error);
+            }
+        }
+        
+        async function handleIceCandidate(candidateData) {
+            if (!peerConnection) return;
+            
+            try {
+                const candidate = new RTCIceCandidate(candidateData.candidate);
+                await peerConnection.addIceCandidate(candidate);
+            } catch (error) {
+                console.error('Ошибка добавления ICE кандидата:', error);
+            }
+        }
+        
+        // ============================================
+        // Firebase сигналинг
+        // ============================================
+        function sendSignal(type, data) {
+            if (!messagesRef) return;
+            
+            const signalData = {
+                from: myClientId,
+                type: type,
+                data: JSON.parse(JSON.stringify(data)),
+                timestamp: Date.now()
+            };
+            
+            push(messagesRef, signalData);
+        }
+        
+        function initFirebaseSignaling() {
+            if (!db) return;
+            
+            myClientId = Math.random().toString(36).substring(2, 10);
+            roomId = getRoomId();
+            updateRoomUrl();
+            
+            // Создаем ссылки на Firebase
+            roomRef = ref(db, `videochat_rooms/${roomId}`);
+            messagesRef = ref(db, `videochat_rooms/${roomId}/messages`);
+            clientsRef = ref(db, `videochat_rooms/${roomId}/clients`);
+            
+            // Регистрируем клиента
+            set(ref(db, `videochat_rooms/${roomId}/clients/${myClientId}`), {
+                connected: true,
+                timestamp: serverTimestamp()
+            });
+            
+            // Удаляем клиента при отключении
+            onDisconnect(ref(db, `videochat_rooms/${roomId}/clients/${myClientId}`)).remove();
+            
+            // Слушаем сообщения
+            onValue(messagesRef, (snapshot) => {
+                const messages = snapshot.val();
+                if (!messages) return;
+                
+                Object.entries(messages).forEach(([key, message]) => {
+                    if (message.from === myClientId) return;
+                    
+                    console.log('Получено сообщение:', message.type);
+                    
+                    switch (message.type) {
+                        case 'offer':
+                            handleOffer(message.data);
+                            break;
+                        case 'answer':
+                            handleAnswer(message.data);
+                            break;
+                        case 'ice-candidate':
+                            handleIceCandidate(message.data);
+                            break;
+                    }
+                    
+                    // Удаляем обработанное сообщение
+                    remove(ref(db, `videochat_rooms/${roomId}/messages/${key}`));
+                });
+            });
+            
+            // Слушаем изменения в клиентах
+            onValue(clientsRef, (snapshot) => {
+                const clients = snapshot.val();
+                const clientIds = clients ? Object.keys(clients) : [];
+                const otherClients = clientIds.filter(id => id !== myClientId);
+                
+                console.log('Клиенты в комнате:', clientIds);
+                
+                // Если есть другой клиент и нет активного соединения
+                if (otherClients.length > 0 && !peerConnection && localStream) {
+                    setTimeout(() => {
+                        if (!peerConnection) {
+                            updateStatus('🎯 Найден собеседник, устанавливаю соединение...');
+                            createOffer();
+                        }
+                    }, 1000);
+                }
+            });
+            
+            updateStatus('🟢 Ожидание собеседника...');
+        }
+        
+        // ============================================
+        // Инициализация медиа
+        // ============================================
         async function initMedia() {
             try {
                 updateStatus('🎥 Запрос доступа к камере...');
@@ -253,121 +535,20 @@
                 localStream = stream;
                 localVideo.srcObject = stream;
                 
-                updateStatus('✅ Камера готова! Подключаюсь к серверу...');
+                updateStatus('✅ Камера готова!', 'success');
                 
-                // Подключаемся к PeerJS серверу
-                initPeer();
+                // Инициализируем сигналинг
+                initFirebaseSignaling();
+                
+                // Настройка кнопок
+                setupControls();
                 
             } catch (error) {
-                updateStatus('❌ Ошибка: ' + error.message);
-                console.error(error);
+                console.error('Ошибка:', error);
+                updateStatus('❌ Ошибка доступа к камере: ' + error.message, 'error');
             }
         }
         
-        function initPeer() {
-            // Создаем Peer с нашим ID комнаты
-            // Используем публичный сервер PeerJS
-            peer = new Peer(roomId, {
-                host: '0.peerjs.com',
-                port: 443,
-                path: '/',
-                secure: true,
-                config: {
-                    iceServers: [
-                        { urls: 'stun:stun.l.google.com:19302' },
-                        { urls: 'stun:stun1.l.google.com:19302' },
-                        {
-                            urls: 'turn:openrelay.metered.ca:80',
-                            username: 'openrelayproject',
-                            credential: 'openrelayproject'
-                        }
-                    ]
-                }
-            });
-            
-            peer.on('open', (id) => {
-                myId = id;
-                updateStatus(`🟢 Подключен! ID: ${id}`);
-                console.log('Мой ID:', id);
-                
-                // Если есть уже звонок, не создаем новый
-                if (!currentCall) {
-                    // Небольшая задержка, чтобы дать возможность второму участнику подключиться
-                    setTimeout(() => {
-                        // Пытаемся позвонить, если мы не в звонке
-                        if (!currentCall && localStream) {
-                            makeCall();
-                        }
-                    }, 2000);
-                }
-            });
-            
-            peer.on('error', (error) => {
-                console.error('Peer error:', error);
-                if (error.type === 'unavailable-id') {
-                    updateStatus('⚠️ Кто-то уже использует эту ссылку! Пытаюсь подключиться...');
-                    // Если ID занят, значит мы второй участник - просто ждем звонка
-                    waitForCall();
-                } else {
-                    updateStatus('❌ Ошибка: ' + error.message);
-                }
-            });
-            
-            peer.on('call', (call) => {
-                console.log('Входящий звонок!');
-                updateStatus('📞 Входящий звонок...');
-                answerCall(call);
-            });
-        }
-        
-        function makeCall() {
-            if (!peer || !localStream) return;
-            
-            console.log('Пытаюсь позвонить по ID:', roomId);
-            
-            // Пробуем позвонить
-            const call = peer.call(roomId, localStream);
-            setupCallHandlers(call);
-            currentCall = call;
-            updateStatus('📞 Звонок...');
-        }
-        
-        function waitForCall() {
-            updateStatus('🟡 Ожидание звонка от собеседника...');
-            // Просто ждем, когда кто-то позвонит
-        }
-        
-        function answerCall(call) {
-            if (!localStream) return;
-            
-            call.answer(localStream);
-            setupCallHandlers(call);
-            currentCall = call;
-            updateStatus('🟢 Соединение устанавливается...');
-        }
-        
-        function setupCallHandlers(call) {
-            call.on('stream', (remoteStreamObj) => {
-                console.log('Получен поток от собеседника');
-                remoteStream = remoteStreamObj;
-                remoteVideo.srcObject = remoteStream;
-                updateStatus('🟢 В соединении! Вы разговариваете', true);
-            });
-            
-            call.on('close', () => {
-                console.log('Звонок завершен');
-                remoteVideo.srcObject = null;
-                currentCall = null;
-                updateStatus('🟡 Звонок завершен. Обновите страницу для нового звонка.');
-            });
-            
-            call.on('error', (error) => {
-                console.error('Call error:', error);
-                updateStatus('❌ Ошибка соединения: ' + error.message);
-            });
-        }
-        
-        // Настройка кнопок
         function setupControls() {
             let audioEnabled = true;
             let videoEnabled = true;
@@ -393,27 +574,25 @@
             };
             
             document.getElementById('hangupBtn').onclick = () => {
-                if (currentCall) {
-                    currentCall.close();
+                if (peerConnection) {
+                    peerConnection.close();
+                    peerConnection = null;
                 }
-                if (peer) {
-                    peer.destroy();
+                if (roomRef) {
+                    set(roomRef, null);
                 }
+                remoteVideo.srcObject = null;
                 updateStatus('🟡 Звонок завершен. Обновите страницу для нового звонка.');
             };
         }
         
         // Запускаем
         initMedia();
-        setupControls();
         
         // Очистка при закрытии
         window.addEventListener('beforeunload', () => {
-            if (currentCall) {
-                currentCall.close();
-            }
-            if (peer) {
-                peer.destroy();
+            if (roomRef && myClientId) {
+                set(ref(db, `videochat_rooms/${roomId}/clients/${myClientId}`), null);
             }
         });
     </script>
